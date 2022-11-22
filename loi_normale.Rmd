@@ -1,0 +1,228 @@
+---
+title: " La loi normale"
+author: "Marie VAUGOYEAU"
+date: "22/11/2022"
+output: 
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+
+# fixe la graine à 105
+set.seed(105)
+```
+  
+# Lois de proababilités  
+Une loi de probabilité revient à **prévoir** le comportement d'une expérience aléatoire. Les grandes lois de probabilité sont basées sur le fonctionnement de jeu de hasard et ont été ensuite formalisées. Naturellement, tout le monde comprend que lorsqu'on joue à lancer une pièce (équilibrée) au hasard, chacune des faces à autant de chance de sortir. Il est impossible de prévoir le nombre de piles et de faces pour un petit nombre de lancers, par exemple six. Par contre, plus ce nombre augmente, plus on peut prévoir le nombre de fois que le côté face va sortir, car le nombre de lancers équilibre le résultat.  
+```{r lancer_pieces}
+# création d'un vecteur contenant le nombre de lancers
+nb_lancers <- c(
+  1:9, # 1, 2, 3... 9
+  seq(from = 10, to = 100, by = 10), # 10, 20... 100
+  seq(from = 200, to = 1000, by = 100) # 200, 300... 1000
+)
+
+# 10 simulations pour chaque valeurs de nb_lancers de pièces
+purrr::map(
+  c(1:10),
+  ~ bind_rows(
+    bind_cols(
+      nb_lancers = nb_lancers,
+      nb_lancers %>% 
+        purrr::map(
+          ~ rbinom(.x, 1, 0.5)
+        ) %>% 
+        purrr::map(sum) %>% 
+        purrr::map(as_tibble) %>% 
+        bind_rows() %>% 
+        rename(nb_faces = value)
+    )
+  )
+) %>% 
+  bind_rows() %>% # mise en commun des lignes
+  mutate(
+    pourcentage_face = nb_faces /nb_lancers # calcul du pourcentage de réussites
+  ) %>% # création du graphique
+  ggplot() + 
+  aes(y = nb_lancers, x = pourcentage_face, group = nb_lancers) +
+  geom_boxplot(color = "grey") + # ajout des boîtes à moustaches
+  geom_jitter() + # ajout des points
+  scale_x_log10() + # choix d'une échelle logarthmique
+  theme_classic() +
+  labs(
+    y = "Nombre de lancers de pièce (échelle logarithmique)",
+    x = "Nombre de faces (%)"
+  )
+
+ggsave("img/lancer_des.png")
+
+```
+
+  
+# Origine de la loi normale  
+Si la loi de probabilité uniforme est la plus intuitive, la loi de probabilité normal est la **plus couramment utilisée**. En effet, c'est celle qui est la plus proche des **phénomènes biologiques**.  
+**La loi normale** aussi appelée **loi gaussienne**, **loi de Gauss** ou **de Laplace-Gauss** des noms de Laplace et Gauss, deux scientifiques du XVIIIème siècle qui l'ont étudiée.  
+  
+Contrairement aux lois binomiales et de Poisson, la loi normale est une loi de probabilité continue définie par deux paramètres : son espérance (µ) et sa variance (σ). Sa densité de probabilité s'écrit comme suit.  
+Si X ∽ Ν(μ,σ²) alors $$ f(x)=\frac{1}{(σ√2π)}{e^{\frac{-1}{2} ({\frac{x-μ}{σ})^2}}} $$ pour tous $$ x ∈ {R^+} $$  
+C'est une densité de probabilité et non une fonction de masse qui permet de la définir. La densité de probabilité est symétrique, le centre étant l'espérance, l'écart-type la largeur du pic comme visible sur la figure.  
+```{r loi_normale}
+
+# choix de l'intervalle de représentation
+intervalle <- seq(-15, 15, 0.1)
+
+# loi normale de paramètres µ égale à -5, -3, 0 ou 3 et σ égale à 2, 0.8, 1 ou 3
+tibble(
+  loi_normale = 
+    rep(
+      c(
+        "µ = 0 & \U03B4 = 1", 
+        "µ = 3 & \U03B4 = 3", 
+        "µ = -3 & \U03B4 = 0.8", 
+        "µ = -5 & \U03B4 = 2"
+      ), 
+      each = length(intervalle)
+    ),
+  x = rep(intervalle, 4),
+  densite = 
+    c(
+      dnorm(intervalle, mean = 0, sd = 1),
+      dnorm(intervalle, mean = 3, sd = 3),
+      dnorm(intervalle, mean = -3, sd = 0.8),
+      dnorm(intervalle, mean = -5, sd = 2))
+) %>% 
+  ggplot() +
+  aes(x = x, y = densite, color = loi_normale) +
+  geom_line(size = 1) +
+  theme_classic() +
+  scale_color_manual(values = c("blue", "dark red", "black", "gold")) +
+  ylab("densite de probabilité (f(x))") +
+  labs(color = "Loi normale")
+
+ggsave("img/loi_normale.png")
+
+```
+  
+# Approximation  
+```{r expl_loi_normale_test_bi_uni_lateral}
+
+# choix de l'intervalle de représentation
+intervalle <- seq(-5, 5, 0.1)
+
+# test bilatéral
+bilateral <- tibble(
+  x = intervalle,
+  "densité" = dnorm(intervalle, mean = 0, sd = 1),
+  region = 
+    case_when(
+      x < qnorm(0.025) ~ "région critique basse",
+      x < qnorm(0.975) ~ "région de confiance",
+      TRUE ~ "région critique haute"
+    )
+) %>% 
+  ggplot() +
+  aes(x = x, y = `densité`) +
+  geom_line(size = 1) +
+  geom_area(aes(fill = region)) +
+  scale_fill_manual(values = c("blue", "red", "green")) +
+  geom_vline(xintercept = qnorm(0.025), size = 1, linetype = "dashed") + 
+  geom_vline(xintercept = qnorm(0.975), size = 1, linetype = "dashed") + 
+  geom_text(aes(x = -4, y = 0.06, label = "2,5 % des valeurs")) +
+  geom_text(aes(x = 4, y = 0.06, label = "2,5 % des valeurs")) +
+  geom_text(aes(x = 0, y = 0.42, label = "95 % des valeurs")) +
+  theme_classic()
+
+# test unilatéral à gauche
+unilateral_gauche <- tibble(
+  x = intervalle,
+  "densité" = dnorm(intervalle, mean = 0, sd = 1),
+  region = 
+    case_when(
+      x < qnorm(0.05) ~ "région critique basse",
+      TRUE ~ "région de confiance"
+    )
+) %>% 
+  ggplot() +
+  aes(x = x, y = `densité`) +
+  geom_line(size = 1) +
+  geom_area(aes(fill = region)) +
+  scale_fill_manual(values = c("blue", "green")) +
+  geom_vline(xintercept = qnorm(0.05), size = 1, linetype = "dashed") + 
+  geom_text(aes(x = -3.5, y = 0.06, label = "5 % des valeurs"), size = 2) +
+  geom_text(aes(x = 0, y = 0.42, label = "95 % des valeurs"), size = 2) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+# test unilatéral à droite
+unilateral_droit <- tibble(
+  x = intervalle,
+  "densité" = dnorm(intervalle, mean = 0, sd = 1),
+  region = 
+    case_when(
+      x > qnorm(0.95) ~ "région critique haute",
+      TRUE ~ "région de confiance"
+    )
+) %>% 
+  ggplot() +
+  
+  aes(x = x, y = `densité`) +
+  geom_line(size = 1) +
+  geom_area(aes(fill = region)) +
+  scale_fill_manual(values = c("red", "green")) +
+  geom_vline(xintercept = qnorm(0.95), size = 1, linetype = "dashed") + 
+  geom_text(aes(x = 3.5, y = 0.06, label = "5 % des valeurs"), size = 2) +
+  geom_text(aes(x = 0, y = 0.42, label = "95 % des valeurs"), size = 2) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+library(cowplot)
+ggdraw() +
+  draw_plot(bilateral, 0, .5, 1, .5) +
+  draw_plot(unilateral_gauche, 0, 0, .5, .5) +
+  draw_plot(unilateral_droit, .5, 0, .5, .5)
+
+```
+  
+# Utilité de la loi normale  
+Un grand nombre de tests est basé sur des données suivant une loi normale : ACP, modèle linéaire, ANOVA...   
+Si les données ne suivent pas de loi normale il ne faut pas faire ses tests !  
+  
+# Le test de Shapiro-Wilk  
+## Le test d'hypohtèses  
+### *1ère étape : Définir les hypothèses*  
+Si le traitement fonctionne on aura plus de femelles que de mâles
+Si le traitement ne fonctionne pas on n’aura pas plus de femelles que de mâles
+
+### *2ème étape : Formaliser mathématiquement les hypothèses*  
+Soit p la proportion de femelles dans la population
+Hypothèse nulle (H0) : p ≤ 0,5
+Hypothèse alternative (H1) : p > 0,5
+
+### *3ème étape : Tester si l’hypothèse nulle est probable ou doit-être rejetée*  
+  
+## Les hypothèses nulles et alternatives  
+Le but d’un test est de rejeter l’hypothèse nulle H0 donc sa formulation dépend de la question posée mais doit contenir le signe égale  
+  
+## La statistique de test  
+$$ {\displaystyle W= {\left (\sum \limits _ {i=1}^ {n}a_ {i}x_ { (i)}\right)^ {2} \over \sum \limits _ {i=1}^ {n} (x_ {i}- {\overline {x}})^ {2}}} $$
+  
+## Réalisation du test  
+```{r test_shapiro}
+
+```
+
+# QQplot  
+## Objectif du QQplot  
+Tester la normalité des données graphiquement en représentant les données réelles et celles attendus celon une loi normale.  
+
+## Réalisation du graphique  
+```{r qqplot}
+
+```
+
+
+
